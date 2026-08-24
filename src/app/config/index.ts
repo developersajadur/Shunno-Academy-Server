@@ -52,11 +52,12 @@ export default {
 
   email: {
     smtp_host: (process.env.SMTP_HOST || 'smtp.gmail.com').replace(/^["']|["']$/g, '').trim(),
-    smtp_port: process.env.SMTP_PORT ? parseInt(process.env.SMTP_PORT.replace(/^["']|["']$/g, '').trim(), 10) : 465,
-    smtp_secure: process.env.SMTP_SECURE === 'true' || process.env.SMTP_PORT === '465' || (!process.env.SMTP_PORT && !process.env.SMTP_SECURE),
+    smtp_port: process.env.SMTP_PORT ? parseInt(process.env.SMTP_PORT.replace(/^["']|["']$/g, '').trim(), 10) : 587,
+    smtp_secure: process.env.SMTP_SECURE === 'true',
     smtp_user: (process.env.SMTP_USER || '').replace(/^["']|["']$/g, '').trim(),
     smtp_pass: (process.env.SMTP_PASS || '').replace(/^["']|["']$/g, '').replace(/\s+/g, '').trim(),
     from_name: (process.env.SMTP_FROM_NAME || 'Shunno Academy').replace(/^["']|["']$/g, '').trim(),
     from_email: (process.env.SMTP_FROM_EMAIL || 'shunnoacademy0@gmail.com').replace(/^["']|["']$/g, '').trim(),
+    resend_api_key: (process.env.RESEND_API_KEY || '').replace(/^["']|["']$/g, '').trim(),
   },
 };

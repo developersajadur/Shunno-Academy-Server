@@ -81,7 +81,7 @@ export class CourseModuleService {
 
     const lecturesToDeleteCount = existing.lectures.length;
 
-    await prisma.$transaction(async (tx) => {
+    await prisma.$transaction(async (tx: any) => {
       await tx.courseLecture.deleteMany({
         where: { moduleId: id },
       });
@@ -158,9 +158,9 @@ export class CourseModuleService {
     });
 
     // If not authorized (not enrolled & not admin), redact private video URLs for non-preview lectures
-    const sanitizedModules = modules.map((mod) => ({
+    const sanitizedModules = modules.map((mod: any) => ({
       ...mod,
-      lectures: mod.lectures.map((lec) => ({
+      lectures: mod.lectures.map((lec: any) => ({
         ...lec,
         videoUrl: isAuthorized || lec.isPreview ? lec.videoUrl : null,
         isLocked: !isAuthorized && !lec.isPreview,
@@ -200,7 +200,7 @@ export class CourseModuleService {
 
     const order = payload.order ?? (lastLecture ? lastLecture.order + 1 : 1);
 
-    const lecture = await prisma.$transaction(async (tx) => {
+    const lecture = await prisma.$transaction(async (tx: any) => {
       const lec = await tx.courseLecture.create({
         data: {
           moduleId: payload.moduleId,
@@ -213,7 +213,7 @@ export class CourseModuleService {
       });
 
       await tx.courseModule.update({
-        where: { id: module.id },
+        where: { id: payload.moduleId },
         data: {
           lecturesCount: {
             increment: 1,
@@ -247,7 +247,13 @@ export class CourseModuleService {
 
     const updated = await prisma.courseLecture.update({
       where: { id },
-      data: payload,
+      data: {
+        title: payload.title,
+        duration: payload.duration,
+        videoUrl: payload.videoUrl,
+        isPreview: payload.isPreview,
+        order: payload.order,
+      },
     });
 
     return updated;
@@ -256,14 +262,16 @@ export class CourseModuleService {
   static async deleteLecture(id: string) {
     const existing = await prisma.courseLecture.findUnique({
       where: { id },
-      include: { module: true },
+      include: {
+        module: true,
+      },
     });
 
     if (!existing) {
       throw new AppError(httpStatus.NOT_FOUND, 'Lecture not found');
     }
 
-    await prisma.$transaction(async (tx) => {
+    await prisma.$transaction(async (tx: any) => {
       await tx.courseLecture.delete({
         where: { id },
       });

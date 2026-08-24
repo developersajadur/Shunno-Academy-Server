@@ -98,7 +98,7 @@ export class EnrollmentService {
     const randomSuffix = Math.floor(100000 + Math.random() * 900000);
     const orderId = `SA-2026-${randomSuffix}`;
 
-    const enrollment = await prisma.$transaction(async (tx) => {
+    const enrollment = await prisma.$transaction(async (tx: any) => {
       const enr = await tx.enrollment.create({
         data: {
           orderId,
@@ -357,7 +357,7 @@ export class EnrollmentService {
       throw new AppError(httpStatus.NOT_FOUND, 'Enrollment record not found!');
     }
 
-    return prisma.$transaction(async (tx) => {
+    return prisma.$transaction(async (tx: any) => {
       // Delete associated payment if exists
       if (existing.payment) {
         await tx.payment.deleteMany({
