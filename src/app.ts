@@ -46,7 +46,7 @@ app.get('/', (_req: Request, res: Response) => {
   res.status(200).json({
     success: true,
     message: '🚀 Shunno Academy REST API is running smoothly.',
-    documentation: '/api/docs',
+    ...(config.node_env !== 'production' && { documentation: '/api/docs' }),
     timestamp: new Date().toISOString(),
   });
 });

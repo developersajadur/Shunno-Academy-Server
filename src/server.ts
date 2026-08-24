@@ -48,7 +48,9 @@ async function bootstrap() {
     // 5. Start HTTP Server
     server = app.listen(config.port, () => {
       logger.info(`🚀 Shunno Academy Server is listening on port ${config.port}`);
-      logger.info(`📑 Interactive API Documentation: http://localhost:${config.port}/api/docs`);
+      if (config.node_env !== 'production') {
+        logger.info(`📑 Interactive API Documentation: http://localhost:${config.port}/api/docs`);
+      }
 
       // 6. Initialize Keep-Alive auto-ping cron for Render (runs if HOST_ON === 'render')
       initKeepAlive();

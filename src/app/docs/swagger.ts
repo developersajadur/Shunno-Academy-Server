@@ -93,6 +93,11 @@ const options: swaggerJsdoc.Options = {
 export const swaggerSpec = swaggerJsdoc(options);
 
 export const setupSwagger = (app: Application) => {
+  if (config.node_env === 'production') {
+    // In production, Swagger API documentation is completely disabled for security
+    return;
+  }
+
   app.use(
     '/api/docs',
     swaggerUi.serve,
