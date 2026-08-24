@@ -1,0 +1,379 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  ADMIN
+  INSTRUCTOR
+  STUDENT
+  STAFF
+}
+
+enum CourseMode {
+  Online
+  Offline
+  Hybrid
+}
+
+enum CourseLevel {
+  BEGINNER
+  INTERMEDIATE
+  ADVANCED
+  ALL_LEVELS
+}
+
+enum EnrollmentStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+  SUSPENDED
+}
+
+enum PaymentMethod {
+  BKASH
+  NAGAD
+  ROCKET
+  UPAY
+  CARD
+  BANK_TRANSFER
+}
+
+enum PaymentStatus {
+  PENDING
+  VERIFIED
+  FAILED
+  REFUNDED
+}
+
+enum InquiryStatus {
+  UNREAD
+  READ
+  CONTACTED
+  RESOLVED
+}
+
+model User {
+  id               String       @id @default(uuid())
+  name             String
+  email            String       @unique
+  phone            String?      @unique
+  password         String
+  role             UserRole     @default(STUDENT)
+  avatar           String?
+  district         String?
+  occupation       String?
+  isBlocked        Boolean      @default(false)
+  isEmailVerified  Boolean      @default(false)
+  isPhoneVerified  Boolean      @default(false)
+  googleId         String?      @unique
+  currentSessionId String?
+  refreshToken     String?      @db.Text
+  
+  enrollments      Enrollment[]
+  reviews          Review[]
+  inquiries        Inquiry[]
+  
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+
+  @@index([email])
+  @@index([phone])
+  @@index([role])
+  @@map("users")
+}
+
+model Category {
+  id          String    @id @default(uuid())
+  name        String    @unique
+  bengaliName String
+  slug        String    @unique
+  icon        String?
+  description String?   @db.Text
+  order       Int       @default(0)
+  courses     Course[]
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([slug])
+  @@map("categories")
+}
+
+model Mentor {
+  id              String    @id @default(uuid())
+  name            String
+  englishName     String
+  designation     String
+  specialization  String
+  avatar          String
+  accentGradient  String    @default("from-blue-600 to-indigo-600")
+  bio             String?   @db.Text
+  experience      String?
+  category        String?
+  totalStudents   Int       @default(0)
+  rating          Float     @default(5.0)
+  facebookUrl     String?
+  linkedinUrl     String?
+  githubUrl       String?
+  websiteUrl      String?
+  isFeatured      Boolean   @default(true)
+  order           Int       @default(0)
+  courses         Course[]
+
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([specialization])
+  @@map("mentors")
+}
+
+model Course {
+  id                  String          @id @default(uuid())
+  title               String
+  bengaliTitle        String?
+  slug                String          @unique
+  categoryId          String
+  category            Category        @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  mode                CourseMode      @default(Online)
+  priceBDT            Int
+  originalPriceBDT    Int?
+  thumbnail           String
+  introVideoUrl       String?
+  liveClassUrl        String?
+  liveClassSchedule   String?
+  isLiveClassActive   Boolean         @default(false)
+  accentColor         String          @default("from-blue-600 to-cyan-500")
+  mentorId            String?
+  mentor              Mentor?         @relation(fields: [mentorId], references: [id], onDelete: SetNull)
+  duration            String
+  totalLectures       Int             @default(0)
+  rating              Float           @default(5.0)
+  totalStudents       Int             @default(0)
+  badge               String?
+  level               CourseLevel     @default(ALL_LEVELS)
+  language            String          @default("বাংলা")
+  enrollmentDeadline  DateTime?
+  isEnrollmentClosed  Boolean         @default(false)
+  isPublished         Boolean         @default(true)
+  isFeatured          Boolean         @default(false)
+  overview            String          @db.Text
+  learningOutcomes    String[]
+  requirements        String[]
+  targetAudience      String[]
+  faqs                Json?
+
+  modules             CourseModule[]
+  enrollments         Enrollment[]
+  reviews             Review[]
+
+  createdAt           DateTime        @default(now())
+  updatedAt           DateTime        @updatedAt
+
+  @@index([slug])
+  @@index([categoryId])
+  @@index([mentorId])
+  @@index([isPublished])
+  @@map("courses")
+}
+
+model CourseModule {
+  id            String          @id @default(uuid())
+  courseId      String
+  course        Course          @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  moduleNumber  Int
+  title         String
+  description   String?         @db.Text
+  lecturesCount Int             @default(0)
+  order         Int             @default(0)
+  lectures      CourseLecture[]
+
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+
+  @@index([courseId])
+  @@map("course_modules")
+}
+
+model CourseLecture {
+  id          String       @id @default(uuid())
+  moduleId    String
+  module      CourseModule @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+  title       String
+  duration    String?
+  videoUrl    String?
+  isPreview   Boolean      @default(false)
+  order       Int          @default(0)
+
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  @@index([moduleId])
+  @@map("course_lectures")
+}
+
+model Enrollment {
+  id             String           @id @default(uuid())
+  orderId        String           @unique
+  studentId      String?
+  student        User?            @relation(fields: [studentId], references: [id], onDelete: SetNull)
+  studentName    String
+  studentPhone   String
+  studentEmail   String
+  district       String
+  occupation     String
+  batchSchedule  String
+  courseId       String
+  course         Course           @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  totalAmount    Int
+  status         EnrollmentStatus @default(PENDING)
+  adminNotes     String?          @db.Text
+  approvedAt     DateTime?
+  approvedById   String?
+
+  payment        Payment?
+
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  @@index([orderId])
+  @@index([studentPhone])
+  @@index([studentEmail])
+  @@index([status])
+  @@index([courseId])
+  @@map("enrollments")
+}
+
+model Payment {
+  id             String        @id @default(uuid())
+  enrollmentId   String        @unique
+  enrollment     Enrollment    @relation(fields: [enrollmentId], references: [id], onDelete: Cascade)
+  method         PaymentMethod
+  senderNumber   String
+  transactionId  String        @unique
+  amount         Int
+  status         PaymentStatus @default(PENDING)
+  bankName       String?
+  accountNumber  String?
+  receiptUrl     String?
+  paymentRemarks String?       @db.Text
+  verifiedAt     DateTime?
+  verifiedById   String?
+
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  @@index([transactionId])
+  @@index([senderNumber])
+  @@index([status])
+  @@map("payments")
+}
+
+model Review {
+  id            String    @id @default(uuid())
+  courseId      String?
+  course        Course?   @relation(fields: [courseId], references: [id], onDelete: SetNull)
+  userId        String?
+  user          User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
+  studentName   String
+  studentTitle  String?
+  studentAvatar String?
+  rating        Int       @default(5)
+  comment       String    @db.Text
+  date          String
+  isApproved    Boolean   @default(true)
+  isFeatured    Boolean   @default(false)
+
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([courseId])
+  @@index([isApproved])
+  @@map("reviews")
+}
+
+model Inquiry {
+  id                 String        @id @default(uuid())
+  userId             String?
+  user               User?         @relation(fields: [userId], references: [id], onDelete: SetNull)
+  fullName           String
+  phone              String
+  email              String
+  subject            String
+  message            String        @db.Text
+  interestedCourseId String?
+  status             InquiryStatus @default(UNREAD)
+
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
+
+  @@index([status])
+  @@index([phone])
+  @@map("inquiries")
+}
+
+model MilestoneStat {
+  id           String    @id @default(uuid())
+  key          String    @unique
+  value        String
+  numericValue Int
+  label        String
+  description  String?
+  order        Int       @default(0)
+
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@map("milestone_stats")
+}
+
+enum TokenType {
+  EMAIL_VERIFICATION
+  PASSWORD_RESET
+}
+
+enum EmailCampaignAudience {
+  ALL_USERS
+  COURSE_STUDENTS
+  CUSTOM_EMAILS
+}
+
+model EmailToken {
+  id        String    @id @default(uuid())
+  email     String
+  token     String    @unique
+  otpCode   String?
+  type      TokenType
+  expiresAt DateTime
+
+  createdAt DateTime  @default(now())
+
+  @@index([email])
+  @@index([token])
+  @@map("email_tokens")
+}
+
+model EmailCampaignLog {
+  id             String                @id @default(uuid())
+  subject        String
+  preheader      String?
+  heading        String
+  body           String                @db.Text
+  ctaButtonText  String?
+  ctaButtonUrl   String?
+  audienceType   EmailCampaignAudience
+  targetCourseId String?
+  recipientCount Int                   @default(0)
+  sentById       String?
+
+  createdAt      DateTime              @default(now())
+
+  @@map("email_campaign_logs")
+}
+
+
