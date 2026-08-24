@@ -10,19 +10,42 @@ export function getEmailTransporter(): nodemailer.Transporter {
   const hasCredentials = Boolean(config.email.smtp_user && config.email.smtp_pass);
 
   if (hasCredentials) {
-    transporter = nodemailer.createTransport({
-      host: config.email.smtp_host,
-      port: config.email.smtp_port,
-      secure: config.email.smtp_secure,
-      auth: {
-        user: config.email.smtp_user,
-        pass: config.email.smtp_pass,
-      },
-      tls: {
-        rejectUnauthorized: false,
-      },
-    });
-    logger.info(`📧 Nodemailer SMTP transporter configured with host: ${config.email.smtp_host}:${config.email.smtp_port}`);
+    const isGmail =
+      config.email.smtp_host.toLowerCase().includes('gmail') ||
+      config.email.smtp_user.toLowerCase().includes('@gmail.com');
+
+    if (isGmail) {
+      // Cloud-optimized Gmail service connection with pooling and SSL
+      transporter = nodemailer.createTransport({
+        service: 'gmail',
+        auth: {
+          user: config.email.smtp_user,
+          pass: config.email.smtp_pass,
+        },
+        pool: true,
+        maxConnections: 5,
+        maxMessages: 100,
+        rateLimit: 10,
+        tls: {
+          rejectUnauthorized: false,
+        },
+      });
+      logger.info(`📧 Nodemailer Gmail Service transporter initialized for "${config.email.smtp_user}" (SSL/TLS Active)`);
+    } else {
+      transporter = nodemailer.createTransport({
+        host: config.email.smtp_host,
+        port: config.email.smtp_port,
+        secure: config.email.smtp_secure,
+        auth: {
+          user: config.email.smtp_user,
+          pass: config.email.smtp_pass,
+        },
+        tls: {
+          rejectUnauthorized: false,
+        },
+      });
+      logger.info(`📧 Nodemailer SMTP transporter configured with host: ${config.email.smtp_host}:${config.email.smtp_port}`);
+    }
   } else {
     // Development / Stream Fallback Transporter
     transporter = nodemailer.createTransport({
@@ -48,11 +71,15 @@ export async function verifySmtpConnection(): Promise<boolean> {
 
   try {
     const t = getEmailTransporter();
-    await t.verify();
+    // 10-second timeout for verification in cloud environments
+    await Promise.race([
+      t.verify(),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('SMTP connection verification timed out after 10 seconds')), 10000)),
+    ]);
     logger.info(`✅ [SMTP] Email server connection verified and authenticated for "${config.email.smtp_user}"`);
     return true;
   } catch (error: any) {
-    errorLogger.error(`❌ [SMTP] Verification failed for "${config.email.smtp_user}":`, error.message);
+    errorLogger.error(`❌ [SMTP] Verification failed for "${config.email.smtp_user}": ${error.message}`);
     return false;
   }
 }
