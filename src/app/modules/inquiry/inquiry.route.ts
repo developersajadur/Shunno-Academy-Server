@@ -4,6 +4,7 @@ import validateRequest from '../../middlewares/validateRequest';
 import { createInquiryValidationSchema, updateInquiryStatusValidationSchema } from './inquiry.validation';
 import auth from '../../middlewares/auth';
 import { UserRole } from '@prisma/client';
+import { inquiryLimiter } from '../../middlewares/rateLimiter';
 
 const router = Router();
 
@@ -31,7 +32,12 @@ const router = Router();
  *       201:
  *         description: Inquiry received
  */
-router.post('/', validateRequest(createInquiryValidationSchema), InquiryController.createInquiry);
+router.post(
+  '/',
+  inquiryLimiter,
+  validateRequest(createInquiryValidationSchema),
+  InquiryController.createInquiry
+);
 
 /**
  * @openapi

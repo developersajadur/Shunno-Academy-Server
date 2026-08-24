@@ -9,11 +9,14 @@ import {
   refreshTokenValidationSchema,
   registerValidationSchema,
   resetPasswordValidationSchema,
+  sendRegistrationOtpValidationSchema,
   sendVerificationEmailValidationSchema,
   updateProfileValidationSchema,
   verifyEmailValidationSchema,
+  verifyRegistrationOtpValidationSchema,
 } from './auth.validation';
 import auth from '../../middlewares/auth';
+import { authLimiter, otpAndResetPasswordLimiter } from '../../middlewares/rateLimiter';
 
 const router = Router();
 
@@ -24,16 +27,49 @@ const router = Router();
  *     summary: Google OAuth Login & Registration
  *     tags: [Auth]
  */
-router.post('/google', validateRequest(googleLoginValidationSchema), AuthController.googleLogin);
+router.post(
+  '/google',
+  authLimiter,
+  validateRequest(googleLoginValidationSchema),
+  AuthController.googleLogin
+);
+
+/**
+ * @openapi
+ * /auth/send-registration-otp:
+ *   post:
+ *     summary: Send 6-Digit Email Verification OTP for Student Registration
+ *     tags: [Auth]
+ */
+router.post(
+  '/send-registration-otp',
+  otpAndResetPasswordLimiter,
+  validateRequest(sendRegistrationOtpValidationSchema),
+  AuthController.sendRegistrationOtp
+);
+
+/**
+ * @openapi
+ * /auth/verify-registration-otp:
+ *   post:
+ *     summary: Verify 6-Digit Email OTP for Student Registration
+ *     tags: [Auth]
+ */
+router.post(
+  '/verify-registration-otp',
+  otpAndResetPasswordLimiter,
+  validateRequest(verifyRegistrationOtpValidationSchema),
+  AuthController.verifyRegistrationOtp
+);
 
 /**
  * @openapi
  * /auth/register:
  *   post:
- *     summary: Register a new student
+ *     summary: Register a new student after email OTP verification
  *     tags: [Auth]
  */
-router.post('/register', validateRequest(registerValidationSchema), AuthController.register);
+router.post('/register', authLimiter, validateRequest(registerValidationSchema), AuthController.register);
 
 /**
  * @openapi
@@ -42,7 +78,35 @@ router.post('/register', validateRequest(registerValidationSchema), AuthControll
  *     summary: Login user & obtain JWT tokens
  *     tags: [Auth]
  */
-router.post('/login', validateRequest(loginValidationSchema), AuthController.login);
+router.post('/login', authLimiter, validateRequest(loginValidationSchema), AuthController.login);
+
+/**
+ * @openapi
+ * /auth/teacher-login:
+ *   post:
+ *     summary: Dedicated secure portal login for Teachers & Instructors
+ *     tags: [Auth]
+ */
+router.post(
+  '/teacher-login',
+  authLimiter,
+  validateRequest(loginValidationSchema),
+  AuthController.teacherLogin
+);
+
+/**
+ * @openapi
+ * /auth/admin-login:
+ *   post:
+ *     summary: Dedicated secure portal login for Admins & Staff
+ *     tags: [Auth]
+ */
+router.post(
+  '/admin-login',
+  authLimiter,
+  validateRequest(loginValidationSchema),
+  AuthController.adminLogin
+);
 
 /**
  * @openapi
@@ -51,7 +115,12 @@ router.post('/login', validateRequest(loginValidationSchema), AuthController.log
  *     summary: Request password reset link
  *     tags: [Auth]
  */
-router.post('/forgot-password', validateRequest(forgotPasswordValidationSchema), AuthController.forgotPassword);
+router.post(
+  '/forgot-password',
+  otpAndResetPasswordLimiter,
+  validateRequest(forgotPasswordValidationSchema),
+  AuthController.forgotPassword
+);
 
 /**
  * @openapi
@@ -60,7 +129,12 @@ router.post('/forgot-password', validateRequest(forgotPasswordValidationSchema),
  *     summary: Reset password with token
  *     tags: [Auth]
  */
-router.post('/reset-password', validateRequest(resetPasswordValidationSchema), AuthController.resetPassword);
+router.post(
+  '/reset-password',
+  otpAndResetPasswordLimiter,
+  validateRequest(resetPasswordValidationSchema),
+  AuthController.resetPassword
+);
 
 /**
  * @openapi
@@ -71,6 +145,7 @@ router.post('/reset-password', validateRequest(resetPasswordValidationSchema), A
  */
 router.post(
   '/send-verification-email',
+  otpAndResetPasswordLimiter,
   validateRequest(sendVerificationEmailValidationSchema),
   AuthController.sendVerificationEmail
 );
@@ -82,7 +157,12 @@ router.post(
  *     summary: Verify email address with token or OTP
  *     tags: [Auth]
  */
-router.post('/verify-email', validateRequest(verifyEmailValidationSchema), AuthController.verifyEmail);
+router.post(
+  '/verify-email',
+  otpAndResetPasswordLimiter,
+  validateRequest(verifyEmailValidationSchema),
+  AuthController.verifyEmail
+);
 
 /**
  * @openapi
@@ -91,7 +171,12 @@ router.post('/verify-email', validateRequest(verifyEmailValidationSchema), AuthC
  *     summary: Obtain new access token via refresh token
  *     tags: [Auth]
  */
-router.post('/refresh-token', validateRequest(refreshTokenValidationSchema), AuthController.refreshToken);
+router.post(
+  '/refresh-token',
+  authLimiter,
+  validateRequest(refreshTokenValidationSchema),
+  AuthController.refreshToken
+);
 
 /**
  * @openapi

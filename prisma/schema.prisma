@@ -60,6 +60,7 @@ enum InquiryStatus {
 
 model User {
   id               String       @id @default(uuid())
+  studentId        String?      @unique
   name             String
   email            String       @unique
   phone            String?      @unique
@@ -68,6 +69,15 @@ model User {
   avatar           String?
   district         String?
   occupation       String?
+  fatherName       String?
+  fatherPhone      String?
+  guardianName     String?
+  guardianPhone    String?
+  address          String?      @db.Text
+  nidNumber        String?
+  employeeId       String?
+  employee         Employee?    @relation(fields: [employeeId], references: [employeeId], onDelete: SetNull)
+  country          String?      @default("Bangladesh")
   isBlocked        Boolean      @default(false)
   isEmailVerified  Boolean      @default(false)
   isPhoneVerified  Boolean      @default(false)
@@ -82,6 +92,8 @@ model User {
   createdAt        DateTime     @default(now())
   updatedAt        DateTime     @updatedAt
 
+  @@index([studentId])
+  @@index([employeeId])
   @@index([email])
   @@index([phone])
   @@index([role])
@@ -109,6 +121,8 @@ model Mentor {
   id              String    @id @default(uuid())
   name            String
   englishName     String
+  email           String?   @unique
+  phone           String?
   designation     String
   specialization  String
   avatar          String
@@ -129,6 +143,7 @@ model Mentor {
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
+  @@index([email])
   @@index([specialization])
   @@map("mentors")
 }
@@ -374,6 +389,26 @@ model EmailCampaignLog {
   createdAt      DateTime              @default(now())
 
   @@map("email_campaign_logs")
+}
+
+model Employee {
+  id             String       @id @default(uuid())
+  employeeId     String       @unique
+  name           String
+  email          String?
+  phone          String?
+  designation    String?      @default("Admission Advisor")
+  department     String?      @default("Marketing & Admissions")
+  status         String       @default("ACTIVE")
+  notes          String?      @db.Text
+  
+  students       User[]
+  
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@index([employeeId])
+  @@map("employees")
 }
 
 

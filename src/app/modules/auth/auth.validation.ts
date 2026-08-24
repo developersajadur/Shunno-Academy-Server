@@ -1,18 +1,40 @@
 import { z } from 'zod';
 
+export const sendRegistrationOtpValidationSchema = z.object({
+  body: z.object({
+    email: z.string({ required_error: 'Email is required' }).email('Please provide a valid email address'),
+    turnstileToken: z.string().optional(),
+  }),
+});
+
+export const verifyRegistrationOtpValidationSchema = z.object({
+  body: z.object({
+    email: z.string({ required_error: 'Email is required' }).email('Please provide a valid email address'),
+    otpCode: z.string({ required_error: 'OTP code is required' }).min(6, 'OTP must be 6 digits'),
+  }),
+});
+
 export const registerValidationSchema = z.object({
   body: z.object({
     name: z.string({ required_error: 'Name is required' }).min(2, 'Name must be at least 2 characters'),
     email: z.string({ required_error: 'Email is required' }).email('Please provide a valid email address'),
     phone: z
-      .string()
-      .regex(/^01[3-9]\d{8}$/, 'Must be a valid 11-digit Bangladeshi phone number (e.g. 01700000000)')
-      .optional(),
+      .string({ required_error: 'মোবাইল নম্বর দেওয়া আবশ্যক' })
+      .regex(/^01[3-9]\d{8}$/, 'Must be a valid 11-digit Bangladeshi phone number (e.g. 01700000000)'),
     password: z
       .string({ required_error: 'Password is required' })
       .min(6, 'Password must be at least 6 characters'),
+    fatherName: z.string().optional(),
+    fatherPhone: z.string().optional(),
+    guardianName: z.string().optional(),
+    guardianPhone: z.string().optional(),
+    address: z.string().optional(),
+    nidNumber: z.string().optional(),
+    employeeId: z.string().optional(),
     district: z.string().optional(),
+    country: z.string().optional(),
     occupation: z.string().optional(),
+    registrationToken: z.string().optional(),
     turnstileToken: z.string().optional(),
   }),
 });
@@ -22,6 +44,7 @@ export const loginValidationSchema = z.object({
     email: z.string({ required_error: 'Email is required' }).email('Please provide a valid email address'),
     password: z.string({ required_error: 'Password is required' }),
     requiredRole: z.enum(['STUDENT', 'ADMIN', 'INSTRUCTOR']).optional(),
+    portal: z.enum(['STUDENT_PORTAL', 'ADMIN_PORTAL', 'TEACHER_PORTAL']).optional(),
     turnstileToken: z.string().optional(),
   }),
 });
@@ -69,9 +92,16 @@ export const updateProfileValidationSchema = z.object({
   body: z.object({
     name: z.string().min(2).optional(),
     phone: z.string().regex(/^01[3-9]\d{8}$/).optional(),
-    avatar: z.string().url().optional(),
+    avatar: z.string().url().or(z.literal('')).optional(),
     district: z.string().optional(),
     occupation: z.string().optional(),
+    fatherName: z.string().optional(),
+    fatherPhone: z.string().optional(),
+    guardianName: z.string().optional(),
+    guardianPhone: z.string().optional(),
+    address: z.string().optional(),
+    nidNumber: z.string().optional(),
+    country: z.string().optional(),
   }),
 });
 
@@ -79,6 +109,7 @@ export const googleLoginValidationSchema = z.object({
   body: z.object({
     credential: z.string().optional(),
     accessToken: z.string().optional(),
+    portal: z.enum(['STUDENT_PORTAL', 'ADMIN_PORTAL']).optional(),
     userInfo: z
       .object({
         email: z.string().email(),

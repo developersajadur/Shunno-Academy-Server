@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { UploadController } from './upload.controller';
 import { upload } from '../../services/storage';
 import auth from '../../middlewares/auth';
+import { uploadLimiter } from '../../middlewares/rateLimiter';
 
 const router = Router();
 
@@ -31,7 +32,7 @@ const router = Router();
  *       200:
  *         description: File uploaded and secure URL returned
  */
-router.post('/', auth(), upload.single('file'), UploadController.uploadSingle);
+router.post('/', uploadLimiter, auth(), upload.single('file'), UploadController.uploadSingle);
 
 /**
  * @openapi

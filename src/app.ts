@@ -9,8 +9,12 @@ import globalErrorHandler from './app/middlewares/globalErrorhandler';
 import notFound from './app/middlewares/notFound';
 import setupSwagger from './app/docs/swagger';
 import httpLogger from './app/middlewares/httpLogger';
+import { globalLimiter } from './app/middlewares/rateLimiter';
 
 const app: Application = express();
+
+// Enable Trust Proxy for Reverse Proxies (Vercel, Render, Nginx, Cloudflare)
+app.set('trust proxy', 1);
 
 // Security Middlewares
 app.use(
@@ -18,6 +22,9 @@ app.use(
     contentSecurityPolicy: false, // Allows Swagger UI to load scripts properly
   })
 );
+
+// Global Rate Limiter
+app.use(globalLimiter);
 
 // Compression & Structured HTTP Request Logging
 app.use(compression());

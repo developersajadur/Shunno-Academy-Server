@@ -8,34 +8,168 @@ import { createToken, verifyToken } from '../../utils/jwt';
 import config from '../../config';
 import { addEmailJob } from '../../queue/email.queue';
 import { verifyTurnstileToken } from '../../utils/turnstile';
+import { generateUniqueStudentId } from '../../utils/generateStudentId';
 
 interface RegisterPayload {
   name: string;
   email: string;
-  phone?: string;
+  phone: string;
   password: string;
+  fatherName?: string;
+  fatherPhone?: string;
+  guardianName?: string;
+  guardianPhone?: string;
+  address?: string;
+  nidNumber?: string;
+  employeeId?: string;
   district?: string;
+  country?: string;
   occupation?: string;
+  registrationToken?: string;
   turnstileToken?: string;
 }
 
 interface LoginPayload {
   email: string;
   password: string;
+  portal?: 'STUDENT_PORTAL' | 'ADMIN_PORTAL';
   turnstileToken?: string;
 }
 
 export class AuthService {
+  /**
+   * Step 1 of Student Registration: Send 6-Digit Email Verification OTP
+   */
+  static async sendRegistrationOtp(email: string, turnstileToken?: string) {
+    if (turnstileToken) {
+      await verifyTurnstileToken(turnstileToken);
+    }
+
+    const cleanEmail = email.toLowerCase().trim();
+
+    const existingUser = await prisma.user.findUnique({
+      where: { email: cleanEmail },
+    });
+    if (existingUser) {
+      throw new AppError(
+        httpStatus.CONFLICT,
+        'এই ইমেইল দিয়ে ইতোমধ্যে একটি একাউন্ট তৈরি করা আছে! অনুগ্রহ করে লগইন করুন।'
+      );
+    }
+
+    // Invalidate prior registration OTP tokens for this email
+    await prisma.emailToken.deleteMany({
+      where: {
+        email: cleanEmail,
+        type: TokenType.EMAIL_VERIFICATION,
+      },
+    });
+
+    const verifyTokenStr = crypto.randomBytes(32).toString('hex');
+    const otpCode = Math.floor(100000 + Math.random() * 900000).toString();
+    const expiresAt = new Date(Date.now() + 15 * 60 * 1000); // 15 mins validity for OTP
+
+    await prisma.emailToken.create({
+      data: {
+        email: cleanEmail,
+        token: verifyTokenStr,
+        otpCode,
+        type: TokenType.EMAIL_VERIFICATION,
+        expiresAt,
+      },
+    });
+
+    const verifyUrl = `${config.client_url}/verify-email?token=${verifyTokenStr}`;
+
+    // Asynchronously dispatch verification email with 6-digit OTP
+    addEmailJob({
+      to: cleanEmail,
+      subject: 'আপনার রেজিস্ট্রেশন ওটিপি কোড - Shunno Academy',
+      template: 'EMAIL_VERIFICATION',
+      context: {
+        name: 'শিক্ষার্থী',
+        verifyUrl,
+        otpCode,
+      },
+    }).catch(() => {});
+
+    return {
+      success: true,
+      message: 'আপনার ইমেইলে একটি ৬ ডিজিটের ভেরিফিকেশন কোড পাঠানো হয়েছে।',
+      email: cleanEmail,
+    };
+  }
+
+  /**
+   * Step 2 of Student Registration: Verify 6-Digit OTP Code
+   */
+  static async verifyRegistrationOtp(email: string, otpCode: string) {
+    const cleanEmail = email.toLowerCase().trim();
+    const cleanOtp = otpCode.trim();
+
+    const emailToken = await prisma.emailToken.findFirst({
+      where: {
+        email: cleanEmail,
+        otpCode: cleanOtp,
+        type: TokenType.EMAIL_VERIFICATION,
+        expiresAt: { gt: new Date() },
+      },
+    });
+
+    if (!emailToken) {
+      throw new AppError(
+        httpStatus.BAD_REQUEST,
+        'ভেরিফিকেশন কোডটি সঠিক নয় অথবা কোডের মেয়াদ শেষ হয়ে গেছে। অনুগ্রহ করে আবার চেষ্টা করুন।'
+      );
+    }
+
+    // Delete token once verified
+    await prisma.emailToken.delete({
+      where: { id: emailToken.id },
+    });
+
+    // Generate signed registration token for 1 hour validity
+    const registrationToken = createToken(
+      { email: cleanEmail, isPreVerified: true },
+      config.jwt.access_secret,
+      '1h'
+    );
+
+    return {
+      success: true,
+      message: 'ইমেইল সফলভাবে ভেরিফাই হয়েছে!',
+      email: cleanEmail,
+      registrationToken,
+    };
+  }
+
+  /**
+   * Step 3 of Student Registration: Final Account Creation
+   */
   static async register(payload: RegisterPayload) {
     if (payload.turnstileToken) {
       await verifyTurnstileToken(payload.turnstileToken);
     }
 
+    const cleanEmail = payload.email.toLowerCase().trim();
+
+    // Verify registration token if provided
+    if (payload.registrationToken) {
+      try {
+        const decoded = verifyToken(payload.registrationToken, config.jwt.access_secret) as any;
+        if (decoded.email !== cleanEmail) {
+          throw new AppError(httpStatus.BAD_REQUEST, 'ভেরিফিকেশন টোকেন ও ইমেইল মিলছে না।');
+        }
+      } catch {
+        throw new AppError(httpStatus.BAD_REQUEST, 'রেজিস্ট্রেশন টোকেনের মেয়াদ শেষ হয়ে গেছে। অনুগ্রহ করে আবার ভেরিফাই করুন।');
+      }
+    }
+
     const existingEmail = await prisma.user.findUnique({
-      where: { email: payload.email.toLowerCase().trim() },
+      where: { email: cleanEmail },
     });
     if (existingEmail) {
-      throw new AppError(httpStatus.CONFLICT, 'An account with this email already exists!');
+      throw new AppError(httpStatus.CONFLICT, 'এই ইমেইল দিয়ে ইতোমধ্যে একটি একাউন্ট তৈরি করা আছে!');
     }
 
     if (payload.phone) {
@@ -43,24 +177,36 @@ export class AuthService {
         where: { phone: payload.phone.trim() },
       });
       if (existingPhone) {
-        throw new AppError(httpStatus.CONFLICT, 'An account with this phone number already exists!');
+        throw new AppError(httpStatus.CONFLICT, 'এই মোবাইল নম্বর দিয়ে ইতোমধ্যে একটি একাউন্ট খোলা আছে!');
       }
     }
 
     const hashedPassword = await bcrypt.hash(payload.password, config.salt_rounds);
+    const studentId = await generateUniqueStudentId();
 
     const newUser = await prisma.user.create({
       data: {
+        studentId,
         name: payload.name.trim(),
-        email: payload.email.toLowerCase().trim(),
-        phone: payload.phone?.trim(),
+        email: cleanEmail,
+        phone: payload.phone.trim(),
         password: hashedPassword,
         role: UserRole.STUDENT,
-        district: payload.district,
-        occupation: payload.occupation,
+        fatherName: payload.fatherName?.trim() || null,
+        fatherPhone: payload.fatherPhone?.trim() || null,
+        guardianName: payload.guardianName?.trim() || null,
+        guardianPhone: payload.guardianPhone?.trim() || null,
+        address: payload.address?.trim() || null,
+        nidNumber: payload.nidNumber?.trim() || null,
+        employeeId: payload.employeeId?.trim() || null,
+        district: payload.district?.trim() || null,
+        country: payload.country?.trim() || 'Bangladesh',
+        occupation: payload.occupation?.trim() || null,
+        isEmailVerified: true, // Mark verified directly since OTP was pre-verified
       },
       select: {
         id: true,
+        studentId: true,
         name: true,
         email: true,
         phone: true,
@@ -68,6 +214,7 @@ export class AuthService {
         avatar: true,
         district: true,
         occupation: true,
+        isEmailVerified: true,
         createdAt: true,
       },
     });
@@ -82,35 +229,6 @@ export class AuthService {
       data: { refreshToken, currentSessionId },
     });
 
-    // Generate Verification Token & 6-digit OTP
-    const verifyTokenStr = crypto.randomBytes(32).toString('hex');
-    const otpCode = Math.floor(100000 + Math.random() * 900000).toString();
-    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
-
-    await prisma.emailToken.create({
-      data: {
-        email: newUser.email,
-        token: verifyTokenStr,
-        otpCode,
-        type: TokenType.EMAIL_VERIFICATION,
-        expiresAt,
-      },
-    });
-
-    const verifyUrl = `${config.client_url}/verify-email?token=${verifyTokenStr}`;
-
-    // Asynchronously dispatch verification email via BullMQ
-    addEmailJob({
-      to: newUser.email,
-      subject: 'আপনার ইমেইল ভেরিফাই করুন - Shunno Academy',
-      template: 'EMAIL_VERIFICATION',
-      context: {
-        name: newUser.name,
-        verifyUrl,
-        otpCode,
-      },
-    }).catch(() => {});
-
     return {
       user: newUser,
       accessToken,
@@ -118,7 +236,10 @@ export class AuthService {
     };
   }
 
-  static async login(payload: LoginPayload & { requiredRole?: UserRole }) {
+  static async login(
+    payload: LoginPayload & { requiredRole?: UserRole; portal?: 'STUDENT_PORTAL' | 'ADMIN_PORTAL' | 'TEACHER_PORTAL' },
+    portalParam?: 'STUDENT_PORTAL' | 'ADMIN_PORTAL' | 'TEACHER_PORTAL'
+  ) {
     if (payload.turnstileToken) {
       await verifyTurnstileToken(payload.turnstileToken);
     }
@@ -132,6 +253,48 @@ export class AuthService {
 
     if (user.isBlocked) {
       throw new AppError(httpStatus.FORBIDDEN, 'Your account has been suspended! Please contact support.');
+    }
+
+    // Determine requested portal context
+    const activePortal =
+      portalParam ||
+      payload.portal ||
+      (payload.requiredRole === UserRole.ADMIN ? 'ADMIN_PORTAL' : 'STUDENT_PORTAL');
+
+    // Rule: Admins/Staff/Teachers cannot login through student login portal
+    if (activePortal === 'STUDENT_PORTAL') {
+      if (user.role === UserRole.ADMIN || user.role === UserRole.STAFF) {
+        throw new AppError(
+          httpStatus.FORBIDDEN,
+          'অ্যাডমিন অ্যাকাউন্ট দিয়ে সাধারণ লগইন পেজে লগইন করা যাবে না। অনুগ্রহ করে /admin-login পেজ ব্যবহার করুন।'
+        );
+      }
+      if (user.role === UserRole.INSTRUCTOR) {
+        throw new AppError(
+          httpStatus.FORBIDDEN,
+          'শিক্ষক অ্যাকাউন্ট দিয়ে সাধারণ লগইন পেজে লগইন করা যাবে না। অনুগ্রহ করে /teacher-login পেজ ব্যবহার করুন।'
+        );
+      }
+    }
+
+    // Rule: Non-admins cannot login through admin login portal
+    if (activePortal === 'ADMIN_PORTAL') {
+      if (user.role !== UserRole.ADMIN && user.role !== UserRole.STAFF) {
+        throw new AppError(
+          httpStatus.FORBIDDEN,
+          'শুধুমাত্র অনুমোদিত অ্যাডমিন এবং স্টাফগণ অ্যাডমিন পোর্টালে লগইন করতে পারবেন।'
+        );
+      }
+    }
+
+    // Rule: Only Teachers (and Admins) can login through teacher login portal
+    if (activePortal === 'TEACHER_PORTAL') {
+      if (user.role !== UserRole.INSTRUCTOR && user.role !== UserRole.ADMIN) {
+        throw new AppError(
+          httpStatus.FORBIDDEN,
+          'শুধুমাত্র শিক্ষকগণ শিক্ষক পোর্টালে লগইন করতে পারবেন। সাধারণ শিক্ষার্থীরা /login পেজ ব্যবহার করুন।'
+        );
+      }
     }
 
     if (payload.requiredRole && user.role !== payload.requiredRole && user.role !== UserRole.ADMIN) {
@@ -155,6 +318,16 @@ export class AuthService {
       throw err;
     }
 
+    // If existing student lacks a studentId, assign one automatically
+    let currentStudentId = user.studentId;
+    if (user.role === UserRole.STUDENT && !currentStudentId) {
+      currentStudentId = await generateUniqueStudentId();
+      await prisma.user.update({
+        where: { id: user.id },
+        data: { studentId: currentStudentId },
+      });
+    }
+
     const currentSessionId = crypto.randomUUID();
     const jwtPayload = { userId: user.id, email: user.email, role: user.role, sessionId: currentSessionId };
     const accessToken = createToken(jwtPayload, config.jwt.access_secret, config.jwt.access_expires_in);
@@ -167,6 +340,7 @@ export class AuthService {
 
     const sanitizedUser = {
       id: user.id,
+      studentId: currentStudentId,
       name: user.name,
       email: user.email,
       phone: user.phone,
@@ -259,6 +433,7 @@ export class AuthService {
         where: { email: emailToken.email },
         data: {
           password: hashedPassword,
+          isEmailVerified: true,
           refreshToken: null, // Revoke active sessions for security
         },
       }),
@@ -379,6 +554,7 @@ export class AuthService {
       where: { id: userId },
       select: {
         id: true,
+        studentId: true,
         name: true,
         email: true,
         phone: true,
@@ -386,6 +562,14 @@ export class AuthService {
         avatar: true,
         district: true,
         occupation: true,
+        fatherName: true,
+        fatherPhone: true,
+        guardianName: true,
+        guardianPhone: true,
+        address: true,
+        nidNumber: true,
+        country: true,
+        employeeId: true,
         isEmailVerified: true,
         createdAt: true,
         updatedAt: true,
@@ -411,6 +595,16 @@ export class AuthService {
       throw new AppError(httpStatus.NOT_FOUND, 'User not found!');
     }
 
+    // Auto-generate and update studentId if a student user doesn't have one
+    if (user.role === UserRole.STUDENT && !user.studentId) {
+      const generatedId = await generateUniqueStudentId();
+      await prisma.user.update({
+        where: { id: user.id },
+        data: { studentId: generatedId },
+      });
+      user.studentId = generatedId;
+    }
+
     return user;
   }
 
@@ -420,6 +614,7 @@ export class AuthService {
       data: payload,
       select: {
         id: true,
+        studentId: true,
         name: true,
         email: true,
         phone: true,
@@ -427,6 +622,14 @@ export class AuthService {
         avatar: true,
         district: true,
         occupation: true,
+        fatherName: true,
+        fatherPhone: true,
+        guardianName: true,
+        guardianPhone: true,
+        address: true,
+        nidNumber: true,
+        country: true,
+        employeeId: true,
         isEmailVerified: true,
         updatedAt: true,
       },
@@ -457,6 +660,7 @@ export class AuthService {
   static async googleLogin(payload: {
     credential?: string;
     accessToken?: string;
+    portal?: 'STUDENT_PORTAL' | 'ADMIN_PORTAL';
     userInfo?: {
       email: string;
       name?: string;
@@ -469,14 +673,14 @@ export class AuthService {
     let avatar: string | undefined;
     let googleId: string | undefined;
 
-    // 1. If Google ID Token (credential) is provided, verify using Google tokeninfo API
+    // 1. If Google ID Token (credential) is provided, verify using Google TokenInfo API
     if (payload.credential) {
       try {
-        const verifyRes = await fetch(
+        const tokeninfoRes = await fetch(
           `https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(payload.credential)}`
         );
-        if (verifyRes.ok) {
-          const googleData = (await verifyRes.json()) as any;
+        if (tokeninfoRes.ok) {
+          const googleData = (await tokeninfoRes.json()) as any;
           email = googleData.email;
           name = googleData.name;
           avatar = googleData.picture;
@@ -528,6 +732,7 @@ export class AuthService {
     }
 
     email = email.toLowerCase().trim();
+    const activePortal = payload.portal || 'STUDENT_PORTAL';
 
     // 4. Find user by email or googleId
     let user = await prisma.user.findFirst({
@@ -537,9 +742,30 @@ export class AuthService {
     });
 
     if (user) {
+      // Portal authorization checks
+      if (activePortal === 'STUDENT_PORTAL' && (user.role === UserRole.ADMIN || user.role === UserRole.STAFF)) {
+        throw new AppError(
+          httpStatus.FORBIDDEN,
+          'অ্যাডমিন অ্যাকাউন্ট দিয়ে সাধারণ গুগল লগইন ব্যবহার করা যাবে না। অনুগ্রহ করে /admin-login পেজ ব্যবহার করুন।'
+        );
+      }
+
+      if (activePortal === 'ADMIN_PORTAL' && user.role !== UserRole.ADMIN && user.role !== UserRole.STAFF) {
+        throw new AppError(
+          httpStatus.FORBIDDEN,
+          'শিক্ষার্থী অ্যাকাউন্ট দিয়ে অ্যাডমিন পোর্টালে লগইন করা যাবে না।'
+        );
+      }
+
       // If user exists, check if blocked
       if (user.isBlocked) {
         throw new AppError(httpStatus.FORBIDDEN, 'Your account has been suspended! Please contact support.');
+      }
+
+      // If student user lacks a studentId, assign one automatically
+      let currentStudentId = user.studentId;
+      if (user.role === UserRole.STUDENT && !currentStudentId) {
+        currentStudentId = await generateUniqueStudentId();
       }
 
       // Update avatar/googleId and ensure email is marked verified
@@ -548,14 +774,25 @@ export class AuthService {
         data: {
           googleId: googleId || user.googleId,
           avatar: avatar || user.avatar || null,
+          studentId: currentStudentId,
           isEmailVerified: true,
         },
       });
     } else {
-      // If user does not exist, create new user account
+      // If portal is ADMIN_PORTAL and account doesn't exist, block registration as admin
+      if (activePortal === 'ADMIN_PORTAL') {
+        throw new AppError(
+          httpStatus.FORBIDDEN,
+          'এই জিমেইলের সাথে কোনো অনুমোদিত অ্যাডমিন অ্যাকাউন্ট পাওয়া যায়নি।'
+        );
+      }
+
+      // If student user does not exist, create new student account with studentId
+      const studentId = await generateUniqueStudentId();
       const randomPassword = await bcrypt.hash(crypto.randomBytes(32).toString('hex'), config.salt_rounds);
       user = await prisma.user.create({
         data: {
+          studentId,
           name: name ? name.trim() : email.split('@')[0],
           email,
           avatar: avatar || null,
@@ -580,6 +817,7 @@ export class AuthService {
 
     const sanitizedUser = {
       id: user.id,
+      studentId: user.studentId,
       name: user.name,
       email: user.email,
       phone: user.phone,

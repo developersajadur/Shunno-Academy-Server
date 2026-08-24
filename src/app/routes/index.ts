@@ -12,6 +12,7 @@ import { uploadRoutes } from '../modules/upload/upload.route';
 import { userRoutes } from '../modules/user/user.route';
 import { emailRoutes } from '../modules/email/email.route';
 import { courseModuleRoutes } from '../modules/courseModule/courseModule.route';
+import { EmployeeRoutes } from '../modules/employee/employee.route';
 
 const router = Router();
 
@@ -29,6 +30,7 @@ const moduleRoutes = [
   { path: '/stats', route: statRoutes },
   { path: '/upload', route: uploadRoutes },
   { path: '/emails', route: emailRoutes },
+  { path: '/employees', route: EmployeeRoutes },
 ];
 
 moduleRoutes.forEach((route) => {

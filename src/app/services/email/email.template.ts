@@ -134,6 +134,7 @@ export function buildBaseEmailHtml({ title, preheader, content }: BaseTemplateOp
       <tr>
         <td class="footer">
           <p style="margin: 0 0 8px 0;"><strong>শুন্য একাডেমি (Shunno Academy)</strong></p>
+          <p style="margin: 0 0 8px 0;">ঠিকানা: শাপলা চত্বর, স্টেশন রোড, রংপুর, বাংলাদেশ</p>
           <p style="margin: 0 0 8px 0;">প্রয়োজনে কল করুন: <a href="tel:+8801704293125">+880 1704-293125</a> | <a href="tel:+8801313292907">+880 1313-292907</a> | হেল্পডেস্ক: <a href="mailto:${config.email.from_email}">${config.email.from_email}</a></p>
           <p style="margin: 0; font-size: 11px; color: #94a3b8;">&copy; ${new Date().getFullYear()} Shunno Academy. সর্বস্বত্ব সংরক্ষিত।</p>
         </td>
