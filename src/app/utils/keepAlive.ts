@@ -2,14 +2,17 @@ import config from '../config';
 import { logger, errorLogger } from '../shared/logger';
 
 let keepAliveTimer: NodeJS.Timeout | null = null;
+let initialTimer: NodeJS.Timeout | null = null;
 
 /**
  * Initializes auto-ping keep-alive cron on Render.
- * Fires every 14 minutes to prevent Render Free tier from spinning down due to inactivity.
+ * Fires every 10 minutes to keep Render Web Services active and prevent cold starts.
  */
 export function initKeepAlive() {
+  const hostOn = (config.host_on || process.env.HOST_ON || '').toLowerCase().trim();
   const isRender =
-    config.host_on?.toLowerCase() === 'render' ||
+    hostOn === 'render' ||
+    hostOn === 'true' ||
     process.env.RENDER === 'true' ||
     Boolean(process.env.RENDER_EXTERNAL_URL);
 
@@ -18,50 +21,71 @@ export function initKeepAlive() {
     return;
   }
 
-  const serverBaseUrl =
+  const rawServerUrl =
     config.server_url ||
+    process.env.SERVER_URL ||
     process.env.RENDER_EXTERNAL_URL ||
     `http://localhost:${config.port}`;
 
-  const healthUrl = `${serverBaseUrl.replace(/\/$/, '')}/api/v1/health`;
-  const intervalMs = 14 * 60 * 1000; // 14 minutes
+  const serverBaseUrl = rawServerUrl.replace(/\/$/, '');
+  const healthUrl = `${serverBaseUrl}/api/v1/health`;
+  const intervalMs = 10 * 60 * 1000; // 10 minutes
 
-  logger.info(`🛡️ Render Keep-Alive Cron initialized. Target: ${healthUrl} (Interval: every 14 minutes)`);
+  logger.info(`🛡️ [Render Keep-Alive] Cron active. Target: ${healthUrl} (Interval: every 10 minutes)`);
 
   const pingServer = async () => {
+    const startTime = Date.now();
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 15000); // 15s timeout
+
     try {
       const response = await fetch(healthUrl, {
+        method: 'GET',
+        signal: controller.signal,
         headers: {
-          'User-Agent': 'Shunno-Academy-Render-KeepAlive/1.0',
+          'User-Agent': 'Shunno-Academy-KeepAlive-Cron/1.0',
+          'Cache-Control': 'no-cache',
         },
       });
 
+      clearTimeout(timeoutId);
+      const latency = Date.now() - startTime;
+
       if (response.ok) {
-        logger.info(`🏓 [Keep-Alive] Self-ping successful (${healthUrl}) - Status: ${response.status} OK`);
+        logger.info(`🏓 [Render Keep-Alive] Self-ping successful (${healthUrl}) - Status: ${response.status} OK | Latency: ${latency}ms`);
       } else {
-        errorLogger.warn(`⚠️ [Keep-Alive] Self-ping responded with status ${response.status}`);
+        errorLogger.warn(`⚠️ [Render Keep-Alive] Self-ping status ${response.status} for ${healthUrl} | Latency: ${latency}ms`);
       }
     } catch (err: any) {
-      errorLogger.warn(`⚠️ [Keep-Alive] Self-ping attempt failed: ${err.message}`);
+      clearTimeout(timeoutId);
+      const latency = Date.now() - startTime;
+      errorLogger.warn(`⚠️ [Render Keep-Alive] Ping attempt to ${healthUrl} failed (${latency}ms): ${err.message}`);
     }
   };
 
-  // Schedule recurring interval every 14 minutes
-  keepAliveTimer = setInterval(pingServer, intervalMs);
+  // 1. Trigger initial ping 10 seconds after server launch
+  initialTimer = setTimeout(pingServer, 10000);
+  if (initialTimer.unref) {
+    initialTimer.unref();
+  }
 
-  // Unref timer so it does not block Node process shutdown
+  // 2. Schedule recurring ping every 10 minutes
+  keepAliveTimer = setInterval(pingServer, intervalMs);
   if (keepAliveTimer.unref) {
     keepAliveTimer.unref();
   }
 }
 
 /**
- * Stops keep-alive timer on server shutdown
+ * Stops keep-alive timers on server shutdown
  */
 export function stopKeepAlive() {
+  if (initialTimer) {
+    clearTimeout(initialTimer);
+    initialTimer = null;
+  }
   if (keepAliveTimer) {
     clearInterval(keepAliveTimer);
     keepAliveTimer = null;
   }
 }
-
