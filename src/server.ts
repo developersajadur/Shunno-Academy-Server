@@ -61,7 +61,21 @@ async function bootstrap() {
   }
 }
 
-bootstrap();
+const isServerless = Boolean(process.env.VERCEL || process.env.NOW_REGION || process.env.AWS_LAMBDA_FUNCTION_NAME);
+
+if (!isServerless) {
+  bootstrap();
+} else {
+  // On Vercel Serverless, initialize DB and seed Admin without long-running listener
+  (async () => {
+    try {
+      await prisma.$connect();
+      await seedAdmin();
+    } catch (e: any) {
+      errorLogger.warn(`⚠️ Serverless init notice: ${e.message}`);
+    }
+  })();
+}
 
 // Handle unhandled rejections
 process.on('unhandledRejection', (err) => {
